@@ -94,12 +94,78 @@ LIKE CVD;
 INSERT INTO stagging_CVD
 SELECT * FROM CVD;
 
+
+-- drop rows with data_value_footnote_symbol = '~' which means 'Statistically unstable estimates not presented [unstable by NCHS standards: (standard error/estimate>0.23 or numerator <20)]'
+DELETE FROM stagging_CVD
+WHERE data_value_footnote_symbol = '~' AND data_value IS NULL;
+-- now we can delete columns data_value_footnote_symbol and data_value_footnote as they are no longer needed
+
+
+SELECT break_out_category_id, break_out_category, break_out_id, break_out, COUNT(*)
+FROM stagging_CVD
+GROUP BY break_out_category_id, break_out_category, break_out_id, break_out;
+
+-- There are 6 break_out's for 'AGE' break_out_category which are 'AGE01' (18-24), 'AGE04' (25-44), 'AGE05' (45-64), 'AGE06' (65+), 'AGE07' (35+), 'AGE08' (75+)
+-- There is no way we can accurately merge all these groups cause 25-44 can't be added to a single other group
+-- In order to better generalize the population and based on the number of data samples per break_out (after cleaning rows) the following groups are created
+-- 'AGE1' (18-34) = 'AGE01' + 'AGE04'
+-- 'AGE2' (35-64) = 'AGE05' + 'AGE07'
+-- 'AGE3' (65-74) = 'AGE06'
+-- 'AGE4' (75+) = 'AGE08'
+
+UPDATE stagging_CVD
+SET break_out_id = 'AGE1', break_out = '18-34'
+WHERE break_out_id = 'AGE01' OR break_out_id = 'AGE04';
+
+UPDATE stagging_CVD
+SET break_out_id = 'AGE2', break_out = '35-64'
+WHERE break_out_id = 'AGE05' OR break_out_id = 'AGE07';
+
+UPDATE stagging_CVD
+SET break_out_id = 'AGE3', break_out = '65-74'
+WHERE break_out_id = 'AGE06';
+
+UPDATE stagging_CVD
+SET break_out_id = 'AGE4', break_out = '75+'
+WHERE break_out_id = 'AGE08';
+
+
+-- Generalizing the data using the id's
+SELECT location_abbr, location_desc, location_id
+FROM stagging_CVD
+GROUP BY location_abbr, location_desc, location_id;
+
+SELECT cls, cls_id
+FROM stagging_CVD
+GROUP BY cls, cls_id;
+
+CREATE TABLE CVD_topic_gen AS
+SELECT topic, topic_id
+FROM stagging_CVD
+GROUP BY topic, topic_id;
+
+CREATE TABLE CVD_question_gen AS
+SELECT question, question_id
+FROM stagging_CVD
+GROUP BY question, question_id;
+
+CREATE TABLE CVD_break_out_category_gen AS
+SELECT break_out_category, break_out_category_id
+FROM stagging_CVD
+GROUP BY break_out_category, break_out_category_id;
+
+CREATE TABLE CVD_break_out_gen AS
+SELECT break_out, break_out_id
+FROM stagging_CVD
+GROUP BY break_out, break_out_id;
+
+
 -- Drop unwanted columns
 SELECT DISTINCT priority_area_1 FROM stagging_CVD; -- remove
 
 SELECT DISTINCT priority_area_2 FROM stagging_CVD; -- remove
 
-SELECT DISTINCT priority_area_3 FROM stagging_CVD;
+SELECT DISTINCT priority_area_3 FROM stagging_CVD; -- remove, unable to draw useful info from 'Healthy People 2030'
 
 SELECT priority_area_3, COUNT(*)
 FROM stagging_CVD
@@ -129,36 +195,6 @@ SELECT DISTINCT break_out_id FROM stagging_CVD; -- generalize using these values
 
 SELECT DISTINCT location_id FROM stagging_CVD; -- remove
 
--- Generalizing the data using the id's
-SELECT location_abbr, location_desc, location_id
-FROM CVD
-GROUP BY location_abbr, location_desc, location_id;
-
-SELECT cls, cls_id
-FROM CVD
-GROUP BY cls, cls_id;
-
-SELECT topic, topic_id
-FROM CVD
-GROUP BY topic, topic_id;
-
-SELECT question, question_id
-FROM CVD
-GROUP BY question, question_id;
-
-SELECT data_value_type, data_value_type_id
-FROM CVD
-GROUP BY data_value_type, data_value_type_id;
-
-SELECT break_out_category, break_out_category_id
-FROM CVD
-GROUP BY break_out_category, break_out_category_id;
-
-SELECT break_out, break_out_id
-FROM CVD
-GROUP BY break_out, break_out_id;
-
-
 SELECT COUNT(*) 
 FROM stagging_CVD
 WHERE data_value_alt != data_value AND data_value IS NOT NULL AND data_value_alt IS NOT NULL;
@@ -167,23 +203,19 @@ WHERE data_value_alt != data_value AND data_value IS NOT NULL AND data_value_alt
 SELECT COUNT(*) FROM (SELECT DISTINCT geo_location FROM stagging_CVD WHERE geo_location IS NOT NULL) AS geo;
 -- there are only 51 distinct geo_locations pointing out that they are indicating location of each state so we can remove it
 
--- drop rows with data_value_footnote_symbol = '~' which means 'Statistically unstable estimates not presented [unstable by NCHS standards: (standard error/estimate>0.23 or numerator <20)]'
-DELETE FROM stagging_CVD
-WHERE data_value_footnote_symbol = '~';
--- now we can delete columns data_value_footnote_symbol and data_value_footnote as they are no longer needed
-
 -- Drop columns from stagging_CVD
 ALTER TABLE stagging_CVD
-DROP COLUMN row_id,
 DROP COLUMN location_abbr,
 DROP COLUMN data_source,
 DROP COLUMN priority_area_1,
 DROP COLUMN priority_area_2,
+DROP COLUMN priority_area_3,
 DROP COLUMN priority_area_4,
 DROP COLUMN cls,
 DROP COLUMN topic,
 DROP COLUMN question,
 DROP COLUMN data_value_type,
+DROP COLUMN data_value_type_id,		-- We don't need this column as well
 DROP COLUMN data_value_unit,
 DROP COLUMN data_value_alt,
 DROP COLUMN data_value_footnote_symbol,
@@ -192,6 +224,17 @@ DROP COLUMN break_out_category,
 DROP COLUMN break_out,
 DROP COLUMN location_id,
 DROP COLUMN geo_location;
+
+-- The mortality rates are in decimals which doesn't make sense so we will round them up to before or next integer based on the value type
+UPDATE stagging_CVD
+SET data_value = CEIL(data_value), low_confidence_limit = FLOOR(low_confidence_limit), high_confidence_limit = CEIL(high_confidence_limit);
+
+-- now set their data type to INTEGER
+ALTER TABLE stagging_CVD
+MODIFY COLUMN data_value INTEGER,
+MODIFY COLUMN low_confidence_limit INTEGER,
+MODIFY COLUMN high_confidence_limit INTEGER;
+
 
 SELECT * FROM stagging_CVD;
 
