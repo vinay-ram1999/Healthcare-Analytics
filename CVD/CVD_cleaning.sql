@@ -225,15 +225,10 @@ DROP COLUMN break_out,
 DROP COLUMN location_id,
 DROP COLUMN geo_location;
 
--- The mortality rates are in decimals which doesn't make sense so we will round them up to before or next integer based on the value type
-UPDATE stagging_CVD
-SET data_value = CEIL(data_value), low_confidence_limit = FLOOR(low_confidence_limit), high_confidence_limit = CEIL(high_confidence_limit);
 
--- now set their data type to INTEGER
-ALTER TABLE stagging_CVD
-MODIFY COLUMN data_value INTEGER,
-MODIFY COLUMN low_confidence_limit INTEGER,
-MODIFY COLUMN high_confidence_limit INTEGER;
+-- In question column at the end remove ' (18+); NVSS'
+UPDATE CVD_question_gen
+SET question = LEFT(question, char_length(question) - 12);
 
 
 SELECT * FROM stagging_CVD;
