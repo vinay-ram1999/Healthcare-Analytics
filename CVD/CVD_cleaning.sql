@@ -1,6 +1,6 @@
 -- Loading Data --
 
--- Create a new SCHEMA named SRDBv5
+-- Create a new SCHEMA
 DROP SCHEMA IF EXISTS `Healthcare`;
 CREATE SCHEMA `Healthcare`;
 USE Healthcare;
